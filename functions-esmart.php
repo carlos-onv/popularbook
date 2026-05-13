@@ -120,6 +120,28 @@ function emathsmart_log_api_error($order_id, $type, $attempt, $payload, $respons
     ]);
 }
 
+/**
+ * Deferred Order Notes: Queue notes to be added AFTER WooCommerce finishes
+ * its status transition (so our note appears above the "status changed" note)
+ */
+function emathsmart_defer_order_note($order_id, $note) {
+    if (!isset($GLOBALS['emathsmart_pending_notes'])) {
+        $GLOBALS['emathsmart_pending_notes'] = [];
+        add_action('shutdown', 'emathsmart_flush_deferred_notes');
+    }
+    $GLOBALS['emathsmart_pending_notes'][] = ['order_id' => $order_id, 'note' => $note];
+}
+
+function emathsmart_flush_deferred_notes() {
+    if (empty($GLOBALS['emathsmart_pending_notes'])) return;
+    foreach ($GLOBALS['emathsmart_pending_notes'] as $pending) {
+        $order = wc_get_order($pending['order_id']);
+        if ($order) {
+            $order->add_order_note($pending['note']);
+        }
+    }
+}
+
 function process_subscription_custom($order_id, $subscription_type = 'Payment', $debug = false)
 {
     if (isset($order_id) && is_numeric($order_id) && $order_id > 0) {
@@ -273,7 +295,7 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
                     $note .= " (parked - awaiting payment)";
                 }
                 
-                $order->add_order_note($note);
+                emathsmart_defer_order_note($order_id, $note);
             } else {
                 // Log failure to DB
                 emathsmart_log_api_error($order_id, $subscription_type, $attempt, $post_body, $response, $curl_error, $http_status);
@@ -301,7 +323,7 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
                         if ($code === 40204) $error_msg = "eMathSmart Refund Notify: Failed ❌ Timestamp before payment.";
                     }
 
-                    $order->add_order_note($error_msg);
+                    emathsmart_defer_order_note($order_id, $error_msg);
                     break;
                 }
             }
