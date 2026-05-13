@@ -81,6 +81,11 @@ function emathsmart_trigger_payment_notification($order_id)
 add_action('woocommerce_order_status_refunded', 'emathsmart_trigger_refund_notification', 10, 1);
 function emathsmart_trigger_refund_notification($order_id)
 {
+    // Only notify eMathSmart for subscription orders
+    if (!function_exists('wcs_get_subscriptions_for_order')) return;
+    $subscriptions = wcs_get_subscriptions_for_order($order_id, array('order_type' => 'any'));
+    if (empty($subscriptions)) return;
+
     process_subscription_custom($order_id, 'refund', false); // False = Silent mode for production
 }
 
@@ -184,13 +189,19 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
 
             } else if ($subscription_type == 'refund') {
                 $url = "https://math-pro-cms.dcraysai.com/api/user-center/order/refundNotify";
+                
+                $date_modified = $order->get_date_modified();
+                $refundTimestamp = $date_modified ? $date_modified->getTimestamp() : $now;
+
                 $sign_params = [
-                    'appId' => 'ParentClub',
-                    'orderId' => (string) $order_id,
-                    'timestamp' => (string) $now,
-                    'nonce' => $nonce,
+                    'appId'           => 'ParentClub',
+                    'orderId'         => (string) $order_id,
+                    'timestamp'       => (string) $now,
+                    'nonce'           => $nonce,
                 ];
                 $post_body = $sign_params;
+                $post_body['parentId'] = 'PID' . $order->get_user_id();
+                $post_body['refundTimestamp'] = (int) $refundTimestamp;
                 $post_body['timestamp'] = (int) $now;
 
             } else if ($subscription_type == 'public_exams') {
@@ -250,11 +261,17 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
             $decoded = json_decode($response, true);
             $code = isset($decoded['code']) ? (int) $decoded['code'] : 0;
 
-            if ($code === 200 || $code === 40101) {
+            if ($code === 200 || $code === 40101 || $code === 40201 || $code === 40202) {
                 $success = true;
 
-                // FEATURE 3: Add Success Note
-                $note = ($code === 200) ? "eMathSmart: Synced ✅" : "eMathSmart: Synced ✅ (already processed)";
+                $note = ($subscription_type === 'refund') ? "eMathSmart: Refund Synced ✅" : "eMathSmart: Synced ✅";
+                
+                if ($code === 40101 || $code === 40202) {
+                    $note .= " (already processed)";
+                } elseif ($code === 40201) {
+                    $note .= " (parked - awaiting payment)";
+                }
+                
                 $order->add_order_note($note);
             } else {
                 // Log failure to DB
@@ -272,12 +289,16 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
                     sleep(2); // Wait 2 seconds before retry
                     continue;
                 } else {
-                    // FEATURE 3: Add Failure Note after max attempts
+                    // FEATURE 3: Specific Failure Notes
                     $error_msg = "eMathSmart: Failed ❌ after $attempt attempts.";
-                    if ($code)
-                        $error_msg .= " (Code: $code)";
-                    if ($curl_error)
-                        $error_msg .= " (cURL Error: $curl_error)";
+                    if ($code) $error_msg .= " (Code: $code)";
+                    if ($curl_error) $error_msg .= " (cURL Error: $curl_error)";
+
+                    if ($subscription_type === 'refund') {
+                        if ($code === 40203) $error_msg = "eMathSmart: Refund Failed ❌ Parent ID mismatch.";
+                        if ($code === 40204) $error_msg = "eMathSmart: Refund Failed ❌ Timestamp before payment.";
+                    }
+
                     $order->add_order_note($error_msg);
                     break;
                 }
