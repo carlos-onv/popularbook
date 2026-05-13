@@ -67,7 +67,7 @@ function emathsmart_create_log_table()
 /**
  * PRODUCTION HOOKS: Trigger eMathSmart notifications automatically
  */
-add_action('woocommerce_order_status_completed', 'emathsmart_trigger_payment_notification', 10, 1);
+add_action('woocommerce_order_status_completed', 'emathsmart_trigger_payment_notification', 20, 1);
 function emathsmart_trigger_payment_notification($order_id)
 {
     // Only notify eMathSmart for subscription orders
@@ -78,7 +78,7 @@ function emathsmart_trigger_payment_notification($order_id)
     process_subscription_custom($order_id, 'Payment', false);
 }
 
-add_action('woocommerce_order_status_refunded', 'emathsmart_trigger_refund_notification', 10, 1);
+add_action('woocommerce_order_status_refunded', 'emathsmart_trigger_refund_notification', 20, 1);
 function emathsmart_trigger_refund_notification($order_id)
 {
     // Only notify eMathSmart for subscription orders
