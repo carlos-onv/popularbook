@@ -21,6 +21,24 @@ function emathsmart_add_logs_page() {
 }
 
 /**
+ * Schedule daily cleanup of old logs (30 days)
+ */
+if (!wp_next_scheduled('emathsmart_daily_log_cleanup')) {
+    wp_schedule_event(time(), 'daily', 'emathsmart_daily_log_cleanup');
+}
+add_action('emathsmart_daily_log_cleanup', 'emathsmart_cleanup_old_logs');
+
+function emathsmart_cleanup_old_logs() {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'emathsmart_log';
+    $days_to_keep = 30;
+    $wpdb->query($wpdb->prepare(
+        "DELETE FROM $table_name WHERE created_at < DATE_SUB(NOW(), INTERVAL %d DAY)",
+        $days_to_keep
+    ));
+}
+
+/**
  * Render the logs page
  */
 function emathsmart_render_logs_page() {
@@ -30,6 +48,12 @@ function emathsmart_render_logs_page() {
 
     global $wpdb;
     $table_name = $wpdb->prefix . 'emathsmart_log';
+
+    // Handle Manual Clear All
+    if (isset($_POST['emathsmart_clear_logs']) && check_admin_referer('emathsmart_clear_logs_action')) {
+        $wpdb->query("TRUNCATE TABLE $table_name");
+        echo '<div class="notice notice-success is-dismissible"><p>All logs have been cleared.</p></div>';
+    }
 
     // Guard: ensure the log table exists
     if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") !== $table_name) {
@@ -316,6 +340,11 @@ function emathsmart_render_logs_page() {
                         <a href="admin.php?page=emathsmart-logs" class="button">Clear</a>
                     </div>
                 </div>
+            </form>
+            
+            <form method="post" onsubmit="return confirm('Are you sure you want to delete ALL logs? This cannot be undone.');" style="margin-top:15px; padding-top:15px; border-top:1px dashed #eee;">
+                <?php wp_nonce_field('emathsmart_clear_logs_action'); ?>
+                <button type="submit" name="emathsmart_clear_logs" class="button button-link-delete" style="color:#d63638; text-decoration:none;">Delete All Logs Permanently</button>
             </form>
         </div>
 
