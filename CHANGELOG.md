@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file for both hum
 - **Feature 3: WooCommerce Admin Visibility**
   - Added automatic WooCommerce Order Notes for API results.
   - Distinct notes for: Success ✅, Idempotent Success (40101) ✅, and Failures ❌.
+- **Feature 4: Admin UI & Security**
+  - Added "Resend to eMathSmart" button to the WooCommerce Order Actions metabox.
+  - Restricted all debug/test triggers (`testcms`, `test_errors`) to logged-in administrators only.
+  - Implemented `emathsmart_debug_override` system to allow safe end-to-end testing of error flows without modifying production code.
 - **Testing Suite**
   - Created `functions-esmart-debug.php` to simulate error scenarios (Invalid Signature, Network Timeout, 500 Errors).
   - Restricted debug triggers to administrators only.

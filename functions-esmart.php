@@ -285,4 +285,32 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
 
 
 
+/**
+ * FEATURE 4: Admin UI - Resend to eMathSmart Button
+ * Adds a custom action to the WooCommerce Order Actions metabox
+ */
+add_filter('woocommerce_order_actions', 'emathsmart_add_resend_order_action');
+function emathsmart_add_resend_order_action($actions)
+{
+    global $theorder;
+    // Only show for completed or refunded orders
+    if ($theorder->has_status(['completed', 'refunded'])) {
+        $actions['emathsmart_resend'] = __('Resend to eMathSmart', 'woocommerce');
+    }
+    return $actions;
+}
+
+add_action('woocommerce_order_action_emathsmart_resend', 'emathsmart_process_resend_action');
+function emathsmart_process_resend_action($order)
+{
+    $order_id = $order->get_id();
+    $type = ($order->get_status() === 'refunded') ? 'refund' : 'Payment';
+    
+    // Trigger the notification
+    process_subscription_custom($order_id, $type, false);
+    
+    // Add a system note that the manual resend was triggered
+    $order->add_order_note(sprintf(__('Manual resend to eMathSmart triggered by %s.', 'woocommerce'), wp_get_current_user()->display_name));
+}
+
 ?>
