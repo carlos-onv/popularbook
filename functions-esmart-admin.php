@@ -143,37 +143,70 @@ function emathsmart_render_logs_page() {
                 <?php if ($logs): ?>
                     <?php foreach ($logs as $log): 
                         $status_class = '';
-                        if ($log->http_status >= 500 || $log->http_status == 0) $status_class = 'log-error-critical';
-                        elseif ($log->response_code != 200 && $log->response_code != 40101) $status_class = 'log-error-warning';
+                        $badge_class = 'badge-success';
+                        $status_text = 'Success';
+
+                        if ($log->http_status >= 500 || $log->http_status == 0) {
+                            $status_class = 'log-error-critical';
+                            $badge_class = 'badge-error';
+                            $status_text = 'Critical Error';
+                        } elseif ($log->response_code != 200 && !in_array($log->response_code, [40101, 40201, 40202])) {
+                            $status_class = 'log-error-warning';
+                            $badge_class = 'badge-warning';
+                            $status_text = 'API Error';
+                        } elseif (in_array($log->response_code, [40101, 40201, 40202])) {
+                            $badge_class = 'badge-info';
+                            $status_text = 'Info';
+                        }
+
+                        // Try to pretty print JSON
+                        $pretty_payload = $log->request_payload;
+                        $json_payload = json_decode($log->request_payload);
+                        if ($json_payload) $pretty_payload = json_encode($json_payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+
+                        $pretty_response = $log->response_body;
+                        $json_response = json_decode($log->response_body);
+                        if ($json_response) $pretty_response = json_encode($json_response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
                     ?>
                         <tr class="<?php echo $status_class; ?>">
                             <td><?php echo $log->id; ?></td>
                             <td>
-                                <a href="<?php echo get_edit_post_link($log->order_id); ?>" target="_blank">
+                                <a href="<?php echo get_edit_post_link($log->order_id); ?>" target="_blank" style="font-weight:600;">
                                     #<?php echo $log->order_id; ?>
                                 </a>
                             </td>
-                            <td><?php echo esc_html($log->api_type); ?></td>
+                            <td><code style="background:#eee; padding:2px 4px; border-radius:3px;"><?php echo esc_html($log->api_type); ?></code></td>
                             <td><?php echo $log->attempt; ?></td>
-                            <td><?php echo $log->response_code; ?></td>
-                            <td><?php echo $log->http_status; ?></td>
-                            <td><?php echo $log->created_at; ?></td>
                             <td>
-                                <button type="button" class="button button-small" onclick="toggleLogDetails(<?php echo $log->id; ?>)">View</button>
+                                <span class="log-badge <?php echo $badge_class; ?>">
+                                    <?php echo $log->response_code ?: 'N/A'; ?>
+                                </span>
+                            </td>
+                            <td><?php echo $log->http_status; ?></td>
+                            <td><?php echo date('M j, Y H:i:s', strtotime($log->created_at)); ?></td>
+                            <td>
+                                <button type="button" class="button button-small" onclick="toggleLogDetails(<?php echo $log->id; ?>)">Details</button>
                             </td>
                         </tr>
                         <tr id="log-details-<?php echo $log->id; ?>" style="display:none;" class="log-details-row">
                             <td colspan="8">
-                                <div style="padding: 15px; background: #f9f9f9; border: 1px solid #ddd;">
-                                    <strong>Request Payload:</strong>
-                                    <pre style="white-space: pre-wrap; word-break: break-all; background: #fff; padding: 10px; border: 1px solid #eee;"><?php echo esc_html($log->request_payload); ?></pre>
-                                    
-                                    <strong>Response Body:</strong>
-                                    <pre style="white-space: pre-wrap; word-break: break-all; background: #fff; padding: 10px; border: 1px solid #eee;"><?php echo esc_html($log->response_body); ?></pre>
+                                <div class="log-details-content">
+                                    <div class="log-details-grid">
+                                        <div class="log-details-col">
+                                            <strong>Request Payload:</strong>
+                                            <pre><?php echo esc_html($pretty_payload); ?></pre>
+                                        </div>
+                                        <div class="log-details-col">
+                                            <strong>Response Body:</strong>
+                                            <pre><?php echo esc_html($pretty_response); ?></pre>
+                                        </div>
+                                    </div>
                                     
                                     <?php if ($log->curl_error): ?>
-                                        <strong style="color:red;">cURL Error:</strong>
-                                        <pre style="white-space: pre-wrap; background: #fff; padding: 10px; border: 1px solid #fee;"><?php echo esc_html($log->curl_error); ?></pre>
+                                        <div style="margin-top:15px;">
+                                            <strong style="color:#d63638;">cURL Error:</strong>
+                                            <pre style="border-left: 4px solid #d63638; background: #fffcfc;"><?php echo esc_html($log->curl_error); ?></pre>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -214,12 +247,40 @@ function emathsmart_render_logs_page() {
     </script>
 
     <style>
-        .log-error-critical { background-color: #f8d7da !important; }
-        .log-error-warning { background-color: #fff3cd !important; }
-        .log-details-row td { padding: 0 !important; }
+        .log-error-critical { background-color: #fff8f8 !important; }
+        .log-error-warning { background-color: #fffcf5 !important; }
+        .log-details-row td { padding: 0 !important; border-top: none !important; }
+        .log-details-content { padding: 20px; background: #fdfdfd; border: 1px solid #e5e5e5; border-top: none; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); }
+        .log-details-grid { display: flex; gap: 20px; }
+        .log-details-col { flex: 1; min-width: 0; }
+        .log-details-content pre { 
+            white-space: pre-wrap; 
+            word-break: break-all; 
+            background: #fff; 
+            padding: 12px; 
+            border: 1px solid #ddd; 
+            border-radius: 3px;
+            font-size: 11px;
+            line-height: 1.4;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+        .badge-success { background: #e7f4e9; color: #1e7e34; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-error { background: #f8d7da; color: #721c24; }
+        .badge-info { background: #d1ecf1; color: #0c5460; }
         .tablenav-pages { float: right; }
         .displaying-num { margin-right: 10px; }
     </style>
     <?php
 }
+
 
