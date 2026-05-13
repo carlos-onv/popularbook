@@ -306,11 +306,11 @@ function emathsmart_process_resend_action($order)
     $order_id = $order->get_id();
     $type = ($order->get_status() === 'refunded') ? 'refund' : 'Payment';
     
+    // Add the trigger note FIRST so it appears below the result in the timeline
+    $order->add_order_note(sprintf(__('Manual resend to eMathSmart triggered by %s.', 'woocommerce'), wp_get_current_user()->display_name));
+
     // Trigger the notification
     process_subscription_custom($order_id, $type, false);
-    
-    // Add a system note that the manual resend was triggered
-    $order->add_order_note(sprintf(__('Manual resend to eMathSmart triggered by %s.', 'woocommerce'), wp_get_current_user()->display_name));
 }
 
 ?>
