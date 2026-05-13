@@ -50,8 +50,8 @@ function restapi_order_refund_compensate($request) {
 function handle_emathsmart_compensation($request, $type) {
     $params = $request->get_json_params();
     
-    // 1. Signature Verification (Disabled by default until blocker is resolved)
-    $debug_mode = true; 
+    // 1. Signature Verification
+    $debug_mode = false; 
     if (!$debug_mode) {
         if (!verify_emathsmart_incoming_signature($params)) {
              return new WP_REST_Response([
@@ -97,6 +97,12 @@ function handle_emathsmart_compensation($request, $type) {
     
     $list = [];
     foreach ($orders as $order) {
+        // Only include if it's a subscription order
+        if (function_exists('wcs_get_subscriptions_for_order')) {
+            $subs = wcs_get_subscriptions_for_order($order->get_id(), array('order_type' => 'any'));
+            if (empty($subs)) continue;
+        }
+        
         $list[] = map_order_to_emathsmart_payload_compensation($order, $type);
     }
 
@@ -122,7 +128,7 @@ function verify_emathsmart_incoming_signature($params) {
     if (!isset($params['signature'])) return false;
     
     $incoming_sig = $params['signature'];
-    $secret = "yZ.qmUuVYz,h_=Wz3:41naWAoxw.vjLm";
+    $secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
     
     unset($params['signature']);
     ksort($params, SORT_STRING);
