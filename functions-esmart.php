@@ -198,8 +198,17 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
                 $post_body['expireTimestamp'] = (int) $expireTimestamp;
             }
 
-            //$secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
-            $secret = "WRONG KEY";
+            $secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
+            
+            // DEBUG OVERRIDE: Allow test suite to poison the request
+            if (isset($GLOBALS['emathsmart_debug_override'])) {
+                if ($GLOBALS['emathsmart_debug_override'] === 'wrong_key') {
+                    $secret = "DEBUG_WRONG_KEY";
+                } elseif ($GLOBALS['emathsmart_debug_override'] === 'dead_url') {
+                    $url = "https://this-domain-does-not-exist-12345.com/api";
+                }
+            }
+
             ksort($sign_params);
             $pairs = [];
             foreach ($sign_params as $k => $v) {
