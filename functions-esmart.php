@@ -230,13 +230,13 @@ function process_subscription_custom($order_id, $subscription_type = 'Payment', 
             } else if ($subscription_type == 'public_exams') {
                 $url = "https://math-pro-cms.dcraysai.com/api/customer-center/getPublicExamQuestions";
                 $expireTimestamp = $now + (365 * 86400);
+                // Note: expireTimestamp is EXCLUDED from signature
                 $sign_params = [
                     'appId' => 'ParentClub',
                     'parentId' => 'PID' . $order->get_user_id(),
                     'subscriptionId' => 'SID' . $order->get_user_id(),
                     'timestamp' => (string) $now,
                     'nonce' => $nonce,
-                    'expireTimestamp' => (string) $expireTimestamp,
                 ];
                 $post_body = $sign_params;
                 $post_body['timestamp'] = (int) $now;
