@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file for both human developers and AI agents.
 
+## [2026-05-15] - API #9 PDF Links in Automatic Trial Expiry Email + Email Copy Update
+
+### Changed
+- **Feature: Auto Trial Expiry Email now includes PDF links**
+  - Extended `emathsmart_inject_exam_links_to_email()` to also target `customer_notification_auto_trial_expiry` (WooCommerce Subscriptions automatic email), in addition to the existing `customer_notification_manual_trial_expiry`.
+  - PDF exam links from API #9 (`getPublicExamQuestions`) are now sent to the user when their trial expires automatically.
+
+- **Email copy updated** in `emathsmart_inject_exam_links_to_email()`:
+  - Heading: `🎁 Your Bonus Public Exam Files` → `📚 Download Your Exam Papers`
+  - Body: `As a thank you for trying eMathSmart...` → `Here are the exam papers and answer keys included with your eMathSmart subscription:`
+
+### Technical Notes for AI Agents
+- **Modified file:** `functions-esmart.php` — single condition change on the `$email->id` check in `emathsmart_inject_exam_links_to_email()`
+- **Email IDs handled:** `customer_notification_manual_trial_expiry` (admin-triggered) AND `customer_notification_auto_trial_expiry` (fires via `woocommerce_scheduled_subscription_trial_end` hook)
+- **PDF links source:** `emathsmart_get_public_exam_links($order_id)` — calls API #9 with HMAC-SHA256 signature; `expireTimestamp` excluded from signature
+- **No new hooks or functions added** — the existing inject function already handles HTML and plain text formats
+
 ## [2026-05-13] - API Integration Hardening (Finalized APIs 5 & 6)
 
 ### Added

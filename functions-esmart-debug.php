@@ -63,3 +63,497 @@ function emathsmart_run_error_tests()
         exit;
     }
 }
+
+/**
+ * API #9 BRUTE FORCE: Try all field name combinations
+ * URL: https://dev-popularbook.local/?brute_api9=1
+ */
+add_action('init', 'emathsmart_brute_force_api9');
+function emathsmart_brute_force_api9()
+{
+    if (!isset($_REQUEST['brute_api9'])) return;
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+
+    echo "<h1>API #9 Brute Force: Field Name Combinations</h1>";
+    echo "<p>Testing all combinations against the live endpoint...</p>";
+
+    $order_id = 116377;
+    $order = wc_get_order($order_id);
+    if (!$order) { echo "Order not found."; exit; }
+
+    $user_id = $order->get_user_id();
+    $secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
+    $url = "https://math-pro-cms.dcraysai.com/api/customer-center/getPublicExamQuestions";
+    $now = time();
+    $nonce = bin2hex(random_bytes(16));
+    $expireTimestamp = $now + (365 * 86400);
+
+    // All possible field name variations
+    $parent_id_names = ['parentId', 'parentClubParentId'];
+    $sub_id_names = ['subscriptionId', 'parentClubSubscriptionId', 'subscribeId'];
+
+    // Fields that might need to be excluded from signature
+    $exclude_options = [
+        [],                           // exclude nothing
+        ['parentId_field'],           // exclude parentId from sig
+        ['subId_field'],              // exclude subscriptionId from sig
+        ['parentId_field', 'subId_field'], // exclude both from sig
+        ['expireTimestamp'],           // exclude expireTimestamp from sig
+    ];
+
+    $test_num = 0;
+    $results = [];
+
+    foreach ($parent_id_names as $pid_name) {
+        foreach ($sub_id_names as $sid_name) {
+            foreach ($exclude_options as $excludes) {
+                $test_num++;
+
+                // Build the full body
+                $body = [
+                    'appId' => 'ParentClub',
+                    $pid_name => 'PID' . $user_id,
+                    $sid_name => 'SID' . $user_id,
+                    'timestamp' => (int) $now,
+                    'nonce' => $nonce,
+                    'expireTimestamp' => (int) $expireTimestamp,
+                ];
+
+                // Build sign params (all as strings)
+                $sign_params = [
+                    'appId' => 'ParentClub',
+                    $pid_name => 'PID' . $user_id,
+                    $sid_name => 'SID' . $user_id,
+                    'timestamp' => (string) $now,
+                    'nonce' => $nonce,
+                    'expireTimestamp' => (string) $expireTimestamp,
+                ];
+
+                // Apply exclusions
+                $exclude_labels = [];
+                foreach ($excludes as $exc) {
+                    if ($exc === 'parentId_field') {
+                        unset($sign_params[$pid_name]);
+                        $exclude_labels[] = $pid_name;
+                    } elseif ($exc === 'subId_field') {
+                        unset($sign_params[$sid_name]);
+                        $exclude_labels[] = $sid_name;
+                    } else {
+                        unset($sign_params[$exc]);
+                        $exclude_labels[] = $exc;
+                    }
+                }
+
+                // Generate signature
+                ksort($sign_params);
+                $pairs = [];
+                foreach ($sign_params as $k => $v) {
+                    if ($v !== null) $pairs[] = $k . '=' . $v;
+                }
+                $content = implode('&', $pairs);
+                $hash = hash_hmac('sha256', $content, $secret, true);
+                $signature = rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
+
+                $body['signature'] = $signature;
+
+                // Send request
+                $ch = curl_init($url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+                $response = curl_exec($ch);
+                curl_close($ch);
+
+                $decoded = json_decode($response, true);
+                $code = isset($decoded['code']) ? $decoded['code'] : 'N/A';
+
+                $exclude_desc = empty($exclude_labels) ? 'none' : implode(', ', $exclude_labels);
+                $status = ($code == 200) ? '✅ SUCCESS' : '❌ ' . $code;
+
+                $results[] = [
+                    'num' => $test_num,
+                    'pid' => $pid_name,
+                    'sid' => $sid_name,
+                    'excluded' => $exclude_desc,
+                    'sign_string' => $content,
+                    'code' => $code,
+                    'status' => $status,
+                    'response' => substr($response, 0, 120),
+                ];
+
+                // If we found success, highlight it
+                if ($code == 200) {
+                    echo "<h2 style='color:green;'>🎉 FOUND WORKING COMBINATION! Test #$test_num</h2>";
+                }
+            }
+        }
+    }
+
+    // Display results table
+    echo "<table border='1' cellpadding='6' style='border-collapse:collapse; font-family:monospace; font-size:13px;'>";
+    echo "<tr style='background:#333;color:#fff;'><th>#</th><th>Parent ID Field</th><th>Sub ID Field</th><th>Excluded from Sig</th><th>Status</th><th>Sign String</th><th>Response</th></tr>";
+    foreach ($results as $r) {
+        $bg = ($r['code'] == 200) ? '#d4edda' : (($r['code'] == 40001) ? '#f8d7da' : '#fff3cd');
+        echo "<tr style='background:$bg;'>";
+        echo "<td>{$r['num']}</td>";
+        echo "<td>{$r['pid']}</td>";
+        echo "<td>{$r['sid']}</td>";
+        echo "<td>{$r['excluded']}</td>";
+        echo "<td><b>{$r['status']}</b></td>";
+        echo "<td style='max-width:400px;word-break:break-all;'>" . esc_html($r['sign_string']) . "</td>";
+        echo "<td style='max-width:300px;word-break:break-all;'>" . esc_html($r['response']) . "</td>";
+        echo "</tr>";
+    }
+    echo "</table>";
+
+    echo "<br><b>Total tests: $test_num</b>";
+    exit;
+}
+
+/**
+ * API #9 BRUTE FORCE v2: Try all ID VALUE combinations
+ * URL: https://dev-popularbook.local/?brute_api9_values=1
+ */
+add_action('init', 'emathsmart_brute_force_api9_values');
+function emathsmart_brute_force_api9_values()
+{
+    if (!isset($_REQUEST['brute_api9_values'])) return;
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+
+    echo "<h1>API #9 Brute Force v2: ID Value Combinations</h1>";
+    echo "<p>Signature fix confirmed. Now testing different ID value formats...</p>";
+
+    $order_id = 116377;
+    $order = wc_get_order($order_id);
+    if (!$order) { echo "Order not found."; exit; }
+
+    $user_id = $order->get_user_id();
+    $secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
+    $url = "https://math-pro-cms.dcraysai.com/api/customer-center/getPublicExamQuestions";
+
+    // Get the WooCommerce subscription ID if available
+    $wc_sub_id = '';
+    if (function_exists('wcs_get_subscriptions_for_order')) {
+        $subs = wcs_get_subscriptions_for_order($order_id, array('order_type' => 'any'));
+        foreach ($subs as $sub) {
+            $wc_sub_id = $sub->get_id();
+            break;
+        }
+    }
+
+    echo "<p><b>Order ID:</b> $order_id | <b>User ID:</b> $user_id | <b>WC Subscription ID:</b> $wc_sub_id</p>";
+
+    // All possible parentId values
+    $parent_values = [
+        'PID' . $user_id       => 'PID' . $user_id,
+        (string) $user_id      => 'raw user_id',
+        'PID' . $order_id      => 'PID' . $order_id,
+        (string) $order_id     => 'raw order_id',
+    ];
+
+    // All possible subscriptionId values
+    $sub_values = [
+        'SID' . $user_id       => 'SID' . $user_id,
+        (string) $user_id      => 'raw user_id',
+        'SID' . $order_id      => 'SID' . $order_id,
+        (string) $order_id     => 'raw order_id',
+    ];
+    if ($wc_sub_id) {
+        $sub_values['SID' . $wc_sub_id] = 'SID' . $wc_sub_id;
+        $sub_values[(string) $wc_sub_id] = 'raw wc_sub_id';
+    }
+
+    $test_num = 0;
+    $results = [];
+
+    foreach ($parent_values as $pid_val => $pid_label) {
+        foreach ($sub_values as $sid_val => $sid_label) {
+            $test_num++;
+
+            // Fresh nonce + timestamp per request to avoid 40003 (Nonce Duplicated)
+            $now = time();
+            $nonce = bin2hex(random_bytes(16));
+            $expireTimestamp = $now + (365 * 86400);
+
+            // Sign params (expireTimestamp excluded per brute-force v1 finding)
+            $sign_params = [
+                'appId' => 'ParentClub',
+                'parentId' => $pid_val,
+                'subscriptionId' => $sid_val,
+                'timestamp' => (string) $now,
+                'nonce' => $nonce,
+            ];
+
+            ksort($sign_params);
+            $pairs = [];
+            foreach ($sign_params as $k => $v) {
+                if ($v !== null) $pairs[] = $k . '=' . $v;
+            }
+            $content = implode('&', $pairs);
+            $hash = hash_hmac('sha256', $content, $secret, true);
+            $signature = rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
+
+            $body = [
+                'appId' => 'ParentClub',
+                'parentId' => $pid_val,
+                'subscriptionId' => $sid_val,
+                'timestamp' => (int) $now,
+                'nonce' => $nonce,
+                'expireTimestamp' => (int) $expireTimestamp,
+                'signature' => $signature,
+            ];
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body, JSON_UNESCAPED_UNICODE));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            $response = curl_exec($ch);
+            curl_close($ch);
+
+            $decoded = json_decode($response, true);
+            $code = isset($decoded['code']) ? $decoded['code'] : 'N/A';
+            $status = ($code == 200) ? '✅ SUCCESS' : '❌ ' . $code;
+
+            $results[] = [
+                'num' => $test_num,
+                'pid_val' => $pid_val,
+                'pid_label' => $pid_label,
+                'sid_val' => $sid_val,
+                'sid_label' => $sid_label,
+                'code' => $code,
+                'status' => $status,
+                'response' => substr($response, 0, 120),
+            ];
+
+            if ($code == 200) {
+                echo "<h2 style='color:green;'>🎉 FOUND WORKING COMBINATION! Test #$test_num</h2>";
+                echo "<p>parentId = <b>$pid_val</b> ($pid_label) | subscriptionId = <b>$sid_val</b> ($sid_label)</p>";
+            }
+        }
+    }
+
+    echo "<table border='1' cellpadding='6' style='border-collapse:collapse; font-family:monospace; font-size:13px;'>";
+    echo "<tr style='background:#333;color:#fff;'><th>#</th><th>parentId</th><th>subscriptionId</th><th>Status</th><th>Response</th></tr>";
+    foreach ($results as $r) {
+        $bg = ($r['code'] == 200) ? '#d4edda' : (($r['code'] == 40301) ? '#f8d7da' : '#fff3cd');
+        echo "<tr style='background:$bg;'>";
+        echo "<td>{$r['num']}</td>";
+        echo "<td>{$r['pid_val']}<br><small>({$r['pid_label']})</small></td>";
+        echo "<td>{$r['sid_val']}<br><small>({$r['sid_label']})</small></td>";
+        echo "<td><b>{$r['status']}</b></td>";
+        echo "<td style='max-width:400px;word-break:break-all;'>" . esc_html($r['response']) . "</td>";
+        echo "</tr>";
+    }
+    echo "</table>";
+    echo "<br><b>Total tests: $test_num</b>";
+    exit;
+}
+
+/**
+ * API #9 BRUTE FORCE v3: The Identifier Compass
+ * URL: https://dev-popularbook.local/?brute_api9_final=1
+ */
+add_action('init', 'emathsmart_brute_force_api9_final');
+function emathsmart_brute_force_api9_final()
+{
+    if (!isset($_REQUEST['brute_api9_final'])) return;
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+
+    $order_id = 116375;
+    $order = wc_get_order($order_id);
+    $user_id = $order->get_user_id();
+    $user = get_userdata($user_id);
+    $email = $user->user_email;
+    
+    // Get actual WCS Subscription ID
+    $wc_sub_id = '';
+    if (function_exists('wcs_get_subscriptions_for_order')) {
+        $subs = wcs_get_subscriptions_for_order($order_id, array('order_type' => 'any'));
+        foreach ($subs as $sub) { $wc_sub_id = $sub->get_id(); break; }
+    }
+
+    echo "<h1>API #9 Identifier Compass</h1>";
+    echo "<p><b>Order ID:</b> $order_id | <b>User ID:</b> $user_id | <b>WCS Sub ID:</b> $wc_sub_id | <b>Email:</b> $email</p>";
+
+    // Systematic Parent ID possibilities
+    $p_possibilities = [
+        'PID' . $user_id => 'PID + UserID',
+        (string)$user_id => 'Raw UserID',
+        $email           => 'Billing Email',
+        'PID' . $order_id => 'PID + OrderID',
+        'PID1'           => 'Theory 1: PID1',
+    ];
+
+    // Systematic Subscription ID possibilities
+    $s_possibilities = [
+        'SID' . $user_id => 'SID + UserID',
+        (string)$user_id => 'Raw UserID',
+        'SID' . $wc_sub_id => 'SID + WCS SubID',
+        (string)$wc_sub_id => 'Raw WCS SubID',
+        'SID' . $order_id => 'SID + OrderID',
+        (string)$order_id => 'Raw OrderID',
+        '1'              => 'Theory 1: Sub ID 1',
+        'SID' . $order_id => 'Theory 2: SID + OrderID',
+    ];
+
+    $secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
+    $url = "https://math-pro-cms.dcraysai.com/api/customer-center/getPublicExamQuestions";
+
+    echo "<table border='1' style='border-collapse:collapse; width:100%; font-family:monospace;'>";
+    echo "<tr style='background:#333;color:#fff;'><th>Parent ID</th><th>Sub ID</th><th>Code</th><th>Message</th></tr>";
+
+    foreach ($p_possibilities as $pid => $p_label) {
+        foreach ($s_possibilities as $sid => $s_label) {
+            $now = time();
+            $nonce = bin2hex(random_bytes(16));
+            $expireTimestamp = $now + (365 * 86400);
+
+            $sign_params = [
+                'appId' => 'ParentClub',
+                'parentId' => $pid,
+                'subscriptionId' => $sid,
+                'timestamp' => (string)$now,
+                'nonce' => $nonce
+            ];
+
+            ksort($sign_params);
+            $pairs = [];
+            foreach ($sign_params as $k => $v) $pairs[] = $k . '=' . $v;
+            $hash = hash_hmac('sha256', implode('&', $pairs), $secret, true);
+            $signature = rtrim(strtr(base64_encode($hash), '+/', '-_'), '=');
+
+            $body = [
+                'appId' => 'ParentClub',
+                'parentId' => $pid,
+                'subscriptionId' => $sid,
+                'timestamp' => (int)$now,
+                'nonce' => $nonce,
+                'expireTimestamp' => (int)$expireTimestamp,
+                'signature' => $signature
+            ];
+
+            $ch = curl_init($url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+            $response = curl_exec($ch);
+            curl_close($ch);
+
+            $decoded = json_decode($response, true);
+            $code = $decoded['code'] ?? 'N/A';
+            $msg = $decoded['message'] ?? 'N/A';
+
+            $color = ($code == 200) ? '#d4edda' : (($code == 40302) ? '#fff3cd' : '#f8d7da');
+            echo "<tr style='background:$color;'>";
+            echo "<td><b>$pid</b><br><small>$p_label</small></td>";
+            echo "<td><b>$sid</b><br><small>$s_label</small></td>";
+            echo "<td>$code</td>";
+            echo "<td>$msg</td>";
+            echo "</tr>";
+        }
+    }
+    echo "</table>";
+    exit;
+}
+
+/**
+ * API #5 SUCCESS VIEWER: Find eMathSmart's internal IDs
+ * URL: https://dev-popularbook.local/?show_api5_success=116377
+ */
+add_action('init', 'emathsmart_show_api5_success');
+function emathsmart_show_api5_success()
+{
+    if (!isset($_REQUEST['show_api5_success'])) return;
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+
+    $order_id = (int)$_REQUEST['show_api5_success'];
+    echo "<h1>API #5 Success Response for Order $order_id</h1>";
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'emathsmart_log';
+    $log = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d AND api_type = 'Payment' AND response_code = 200 ORDER BY id DESC LIMIT 1", $order_id));
+
+    if ($log) {
+        echo "<p><b>Created At:</b> {$log->created_at}</p>";
+        echo "<h3>Response Body:</h3>";
+        echo "<pre style='background:#f4f4f4; border:1px solid #ccc; padding:15px; overflow:auto;'>" . esc_html($log->response_body) . "</pre>";
+        
+        $decoded = json_decode($log->response_body, true);
+        if (isset($decoded['data'])) {
+            echo "<h3>Parsed Data:</h3>";
+            echo "<pre style='background:#eef; padding:10px;'>" . print_r($decoded['data'], true) . "</pre>";
+        }
+    } else {
+        echo "<p style='color:red;'>No successful Payment log found for Order $order_id. Please make sure the order was synced and logged as success.</p>";
+    }
+    exit;
+}
+
+/**
+ * API #9 LIVE DEMO: Show request/response for the call
+ * URL: https://dev-popularbook.local/?show_api9_live=116375
+ */
+add_action('init', 'emathsmart_show_api9_live');
+function emathsmart_show_api9_live()
+{
+    if (!isset($_REQUEST['show_api9_live'])) return;
+    if (!current_user_can('manage_options')) wp_die('Unauthorized');
+
+    $order_id = (int)$_REQUEST['show_api9_live'];
+    echo "<body style='background:#1e1e1e; color:#d4d4d4; font-family:monospace; padding:40px;'>";
+    echo "<h1 style='color:#569cd6;'>eMathSmart API #9 Live Diagnostic</h1>";
+    echo "<p style='color:#ce9178;'>Target Order: $order_id</p>";
+
+    // Trigger the actual production function
+    ob_start();
+    process_subscription_custom($order_id, 'public_exams', true);
+    ob_end_clean();
+
+    // The function emathsmart_log_api_error saves the last one
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'emathsmart_log';
+    $log = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE order_id = %d AND api_type = 'public_exams' ORDER BY id DESC LIMIT 1", $order_id));
+
+    if ($log && !empty($log->request_payload)) {
+        $req = json_decode($log->request_payload, true);
+        $secret = "yZ.qmUuVYz,h_=Wzj:4!naWAoxW.vjLm";
+        
+        if (is_array($req)) {
+            // Re-construct the signature string for display
+            $sign_params = $req;
+            unset($sign_params['signature']);
+            unset($sign_params['expireTimestamp']);
+            unset($sign_params['type']);
+            ksort($sign_params);
+            $pairs = [];
+            foreach ($sign_params as $k => $v) $pairs[] = "$k=$v";
+            $raw_string = implode('&', $pairs);
+
+            echo "<h2 style='color:#4ec9b0;'>1. Signature Generation (The 'Proof')</h2>";
+            echo "<div style='background:#2d2d2d; border:1px solid #444; padding:20px; color:#dcdcdc;'>";
+            echo "<b>Shared Secret:</b> <span style='color:#ce9178;'>$secret</span><br><br>";
+            echo "<b>Raw String to Sign:</b> <br><code style='color:#9cdcfe; background:#3c3c3c; padding:5px; display:block; margin-top:10px;'>$raw_string</code>";
+            echo "<p style='font-size:0.9em; color:#888;'>* Note how <code>expireTimestamp</code> is excluded from the string above, as per the successful handshake.</p>";
+            echo "</div>";
+
+            echo "<h2 style='color:#4ec9b0;'>2. Final JSON Request Payload</h2>";
+            echo "<pre style='background:#2d2d2d; border:1px solid #444; padding:20px; color:#9cdcfe;'>" . json_encode($req, JSON_PRETTY_PRINT) . "</pre>";
+        }
+        
+        echo "<h2 style='color:#4ec9b0;'>3. JSON Response</h2>";
+        $response = json_decode($log->response_body, true);
+        $color = (isset($response['code']) && $response['code'] == 200) ? '#b5cea8' : '#f44747';
+        echo "<pre style='background:#2d2d2d; border:1px solid #444; padding:20px; color:$color; font-size:1.2em;'>" . json_encode($response, JSON_PRETTY_PRINT) . "</pre>";
+    } else {
+        echo "<p style='color:red;'>Failed to retrieve log entry for order $order_id. Please try again.</p>";
+    }
+    
+    echo "</body>";
+    exit;
+}
